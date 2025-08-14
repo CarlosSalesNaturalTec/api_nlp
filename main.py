@@ -4,8 +4,8 @@ import datetime
 import pytz
 
 from database import get_db
-from models.schemas import ScrapedArticle, NlpAnalysis, AnalysisResult, ErrorLog
-from nlp_service import analyze_text
+from google_nlp_service import analyze_text
+from models.schemas import ScrapedArticle, GoogleNlpAnalysis, AnalysisResult, ErrorLog
 
 app = FastAPI(
     title="API NLP",
@@ -58,12 +58,12 @@ def analyze_articles_by_owner(owner: str):
         for article in articles_to_process:
             try:
                 # 1. Realiza a Análise NLP
-                nlp_analysis = analyze_text(article.text)
+                google_nlp_analysis = analyze_text(article.text)
 
                 # 2. Cria o resultado da análise
                 analysis_result = AnalysisResult(
                     article=article,
-                    nlp_analysis=nlp_analysis,
+                    google_nlp_analysis=google_nlp_analysis,
                     processed_at=datetime.datetime.now(datetime.timezone.utc)
                 )
 

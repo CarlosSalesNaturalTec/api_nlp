@@ -1,8 +1,8 @@
 from google.cloud.language_v1 import LanguageServiceClient, types
-from models.schemas import NlpAnalysis, ModerationResult
+from models.schemas import GoogleNlpAnalysis, ModerationResult
 import logging
 
-def analyze_text(text: str) -> NlpAnalysis:
+def analyze_text(text: str) -> GoogleNlpAnalysis:
     """
     Analisa o texto de entrada usando a API Google Cloud Natural Language.
     """
@@ -37,7 +37,7 @@ def analyze_text(text: str) -> NlpAnalysis:
                 )
             )
 
-        return NlpAnalysis(
+        return GoogleNlpAnalysis(
             sentiment=sentiment,
             entities=entities,
             moderation_results=moderation_results,
@@ -46,7 +46,7 @@ def analyze_text(text: str) -> NlpAnalysis:
         logging.error(f"Erro durante a análise de NLP: {e}")
         # Log do erro detalhado
         logging.exception("Detalhes da exceção:")
-        return NlpAnalysis(
+        return GoogleNlpAnalysis(
             sentiment="erro na análise",
             entities=[],
             moderation_results=[],

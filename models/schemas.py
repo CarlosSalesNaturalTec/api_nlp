@@ -20,14 +20,14 @@ class ModerationResult(BaseModel):
     category: str
     confidence: float
 
-class NlpAnalysis(BaseModel):
+class GoogleNlpAnalysis(BaseModel):
     sentiment: str
     entities: List[str]
     moderation_results: List[ModerationResult]
 
 class AnalysisResult(BaseModel):
     article: ScrapedArticle
-    nlp_analysis: NlpAnalysis
+    google_nlp_analysis: GoogleNlpAnalysis
     processed_at: datetime = Field(default_factory=datetime.now)
 
 class ErrorLog(BaseModel):
