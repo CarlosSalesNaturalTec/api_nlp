@@ -1,6 +1,6 @@
 fastapi
-uvicorn
-google-cloud-firestore
-firebase_admin
+uvicorn[standard]
+google-cloud-aiplatform
+firebase-admin
 python-dotenv
-requests
+pydantic
