@@ -4,7 +4,7 @@ import logging
 
 def analyze_text(text: str) -> NlpAnalysis:
     """
-    Analyzes the input text using Google Cloud Natural Language API.
+    Analisa o texto de entrada usando a API Google Cloud Natural Language.
     """
     try:
         client = LanguageServiceClient()
@@ -12,7 +12,7 @@ def analyze_text(text: str) -> NlpAnalysis:
             content=text, type_=types.Document.Type.PLAIN_TEXT, language="pt"
         )
 
-        # Sentiment analysis
+        # Análise de sentimento
         sentiment_response = client.analyze_sentiment(document=document)
         sentiment_score = sentiment_response.document_sentiment.score
         if sentiment_score > 0.25:
@@ -22,11 +22,11 @@ def analyze_text(text: str) -> NlpAnalysis:
         else:
             sentiment = "neutro"
 
-        # Entity analysis
+        # Análise de entidades
         entities_response = client.analyze_entities(document=document)
         entities = [entity.name for entity in entities_response.entities]
 
-        # Content classification is not reliably working for Portuguese, so we skip it.
+        # A classificação de conteúdo não está funcionando de forma confiável para o português, então pulamos.
         mention_type = "não classificado"
 
         return NlpAnalysis(
@@ -35,9 +35,9 @@ def analyze_text(text: str) -> NlpAnalysis:
             entities=entities,
         )
     except Exception as e:
-        logging.error(f"Error during NLP analysis: {e}")
-        # In case of an error, we still need to return an NlpAnalysis object.
-        # We can return one with default/error values.
+        logging.error(f"Erro durante a análise de NLP: {e}")
+        # Em caso de erro, ainda é necessário retornar um objeto NlpAnalysis.
+        # Podemos retornar um com valores padrão/de erro.
         return NlpAnalysis(
             mention_type="erro na análise",
             sentiment="erro na análise",
