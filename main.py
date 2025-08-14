@@ -1,9 +1,10 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from typing import List
 import traceback
+import datetime
 
 from database import get_db
-from models.schemas import ScrapedArticle, ErrorLog
+from models.schemas import ScrapedArticle, NlpAnalysis, AnalysisResult, ErrorLog
 
 app = FastAPI(
     title="API NLP",
@@ -15,34 +16,87 @@ app = FastAPI(
 def read_root():
     return {"message": "Bem-vindo à API NLP!"}
 
-@app.post("/process-articles/", response_model=List[ScrapedArticle])
-def process_articles():
+@app.post("/analyze/{owner}", response_model=dict)
+def analyze_articles_by_owner(owner: str):
     """
-    Busca artigos da coleção 'scraped_articles' no Firestore,
-    realiza o processamento de NLP e armazena os resultados.
+    Busca artigos pendentes de um 'owner' específico, realiza a análise de NLP,
+    salva os resultados e atualiza o status do artigo.
     """
     db = get_db()
     articles_ref = db.collection('scraped_articles')
+    results_collection = db.collection('nlp_analysis_results')
     
-    try:
-        articles_snapshot = articles_ref.stream()
-        articles = [ScrapedArticle.model_validate(doc.to_dict()) for doc in articles_snapshot]
-        
-        if not articles:
-            raise HTTPException(status_code=404, detail="Nenhum artigo encontrado para processamento.")
+    processed_count = 0
+    errors = []
 
-        # TODO: Adicionar a lógica de processamento de NLP aqui.
+    try:
+        # Busca por artigos com status 'pending' para o owner especificado
+        query = articles_ref.where('owner', '==', owner).where('status', '==', 'pending')
+        articles_snapshot = query.stream()
+
+        articles_to_process = []
+        for doc in articles_snapshot:
+            article_data = doc.to_dict()
+            article_data['id'] = doc.id
+            articles_to_process.append(ScrapedArticle.model_validate(article_data))
+
+        if not articles_to_process:
+            return {"message": f"Nenhum artigo pendente encontrado para o owner '{owner}'."}
+
+        for article in articles_to_process:
+            try:
+                # 1. Simulação da Análise NLP
+                # (Aqui entrará a lógica real de NLP)
+                nlp_analysis = NlpAnalysis(
+                    mention_type="notícia",
+                    sentiment="neutro",
+                    author_profile="indefinido",
+                    intentions=["informar"],
+                    entities=["OMC", "Donald Trump", "Brasil", "China"]
+                )
+
+                # 2. Cria o resultado da análise
+                analysis_result = AnalysisResult(
+                    article=article,
+                    nlp_analysis=nlp_analysis,
+                    processed_at=datetime.datetime.now(datetime.timezone.utc)
+                )
+
+                # 3. Salva o resultado em 'nlp_analysis_results'
+                results_collection.add(analysis_result.model_dump(exclude_none=True))
+
+                # 4. Atualiza o status do artigo original para 'processed'
+                article_doc_ref = articles_ref.document(article.id)
+                article_doc_ref.update({"status": "processed"})
+                
+                processed_count += 1
+
+            except Exception as e:
+                error_detail = traceback.format_exc()
+                errors.append(f"Erro ao processar artigo {article.id}: {e}")
+                # Log de erro individual no Firestore
+                error_log = ErrorLog(
+                    error_message=f"Falha no processamento do artigo ID: {article.id} - {e}",
+                    details=error_detail
+                )
+                db.collection('erros_de_execucao_api_nlp').add(error_log.model_dump())
+
+        response = {
+            "message": f"Processamento concluído para o owner '{owner}'.",
+            "processed_count": processed_count,
+        }
+        if errors:
+            response["errors"] = errors
         
-        return articles
+        return response
 
     except Exception as e:
-        # Log de erro no Firestore
+        # Log de erro geral no Firestore
         error_log = ErrorLog(
             error_message=str(e),
             details=traceback.format_exc()
         )
         db.collection('erros_de_execucao_api_nlp').add(error_log.model_dump())
         
-        # Lança uma exceção HTTP
-        raise HTTPException(status_code=500, detail=f"Ocorreu um erro ao processar os artigos: {e}")
+        raise HTTPException(status_code=500, detail=f"Ocorreu um erro geral ao processar os artigos: {e}")
 
