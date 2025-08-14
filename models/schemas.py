@@ -19,8 +19,6 @@ class ScrapedArticle(BaseModel):
 class NlpAnalysis(BaseModel):
     mention_type: str
     sentiment: str
-    author_profile: str
-    intentions: List[str]
     entities: List[str]
 
 class AnalysisResult(BaseModel):

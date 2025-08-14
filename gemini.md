@@ -52,9 +52,7 @@ A aplicação utiliza os seguintes modelos Pydantic para estruturar os dados:
 
 -   **`NlpAnalysis`**: Armazena os resultados gerados pelo processamento de NLP.
     -   `mention_type`: `str` - Classificação do tipo de menção (ex: reclamação, elogio).
-    -   `sentiment`: `str` - Sentimento geral do texto (ex: positivo, negativo, neutro).
-    -   `author_profile`: `str` - Perfil identificado do autor (ex: influenciador, detrator).
-    -   `intentions`: `List[str]` - Lista de intenções detectadas no texto.
+    -   `sentiment`: `str` - Sentimento geral do texto (ex: positivo, negativo, neutro).    
     -   `entities`: `List[str]` - Lista de entidades nomeadas (pessoas, marcas, etc.).
 
 -   **`AnalysisResult`**: Modelo que agrega o artigo original e sua respectiva análise, representando o documento final a ser salvo no Firestore.

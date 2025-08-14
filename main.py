@@ -1,10 +1,10 @@
-from fastapi import FastAPI, HTTPException, Body
-from typing import List
+from fastapi import FastAPI, HTTPException
 import traceback
 import datetime
 
 from database import get_db
 from models.schemas import ScrapedArticle, NlpAnalysis, AnalysisResult, ErrorLog
+from nlp_service import analyze_text
 
 app = FastAPI(
     title="API NLP",
@@ -38,6 +38,11 @@ def analyze_articles_by_owner(owner: str):
         for doc in articles_snapshot:
             article_data = doc.to_dict()
             article_data['id'] = doc.id
+            # Convertendo timestamps do Firestore para datetime, se necessário
+            if 'scraped_at' in article_data and not isinstance(article_data['scraped_at'], datetime.datetime):
+                article_data['scraped_at'] = article_data['scraped_at'].to_datetime()
+            if 'publish_date' in article_data and article_data['publish_date'] and not isinstance(article_data['publish_date'], datetime.datetime):
+                article_data['publish_date'] = article_data['publish_date'].to_datetime()
             articles_to_process.append(ScrapedArticle.model_validate(article_data))
 
         if not articles_to_process:
@@ -45,15 +50,8 @@ def analyze_articles_by_owner(owner: str):
 
         for article in articles_to_process:
             try:
-                # 1. Simulação da Análise NLP
-                # (Aqui entrará a lógica real de NLP)
-                nlp_analysis = NlpAnalysis(
-                    mention_type="notícia",
-                    sentiment="neutro",
-                    author_profile="indefinido",
-                    intentions=["informar"],
-                    entities=["OMC", "Donald Trump", "Brasil", "China"]
-                )
+                # 1. Realiza a Análise NLP
+                nlp_analysis = analyze_text(article.text)
 
                 # 2. Cria o resultado da análise
                 analysis_result = AnalysisResult(
@@ -63,7 +61,8 @@ def analyze_articles_by_owner(owner: str):
                 )
 
                 # 3. Salva o resultado em 'nlp_analysis_results'
-                results_collection.add(analysis_result.model_dump(exclude_none=True))
+                # Usamos .model_dump() para converter o objeto Pydantic em um dicionário
+                results_collection.add(analysis_result.model_dump(by_alias=True, exclude_none=True))
 
                 # 4. Atualiza o status do artigo original para 'processed'
                 article_doc_ref = articles_ref.document(article.id)
