@@ -1,5 +1,5 @@
 from google.cloud.language_v1 import LanguageServiceClient, types
-from models.schemas import NlpAnalysis
+from models.schemas import NlpAnalysis, ModerationResult
 import logging
 
 def analyze_text(text: str) -> NlpAnalysis:
@@ -26,21 +26,28 @@ def analyze_text(text: str) -> NlpAnalysis:
         entities_response = client.analyze_entities(document=document)
         entities = [entity.name for entity in entities_response.entities]
 
-        # A classificação de conteúdo não está funcionando de forma confiável para o português, então pulamos.
-        mention_type = "não classificado"
+        # Moderação de conteúdo
+        moderation_response = client.moderate_text(document=document)
+        moderation_results = []
+        for category in moderation_response.moderation_categories:
+            moderation_results.append(
+                ModerationResult(
+                    category=category.name,
+                    confidence=category.confidence
+                )
+            )
 
         return NlpAnalysis(
-            mention_type=mention_type,
-            sentiment=sentiment,            
+            sentiment=sentiment,
             entities=entities,
+            moderation_results=moderation_results,
         )
     except Exception as e:
         logging.error(f"Erro durante a análise de NLP: {e}")
-        # Em caso de erro, ainda é necessário retornar um objeto NlpAnalysis.
-        # Podemos retornar um com valores padrão/de erro.
+        # Log do erro detalhado
+        logging.exception("Detalhes da exceção:")
         return NlpAnalysis(
-            mention_type="erro na análise",
             sentiment="erro na análise",
             entities=[],
+            moderation_results=[],
         )
-

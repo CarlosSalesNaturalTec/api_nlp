@@ -3,7 +3,7 @@ from typing import List, Optional
 from datetime import datetime
 
 class ScrapedArticle(BaseModel):
-    id: Optional[str] = None
+    id: str
     title: str
     url: str
     authors: List[str]
@@ -14,12 +14,16 @@ class ScrapedArticle(BaseModel):
     domain: str
     publish_date: Optional[datetime] = None
     owner: str
-    status: Optional[str] = 'pending'
+    status: str
+
+class ModerationResult(BaseModel):
+    category: str
+    confidence: float
 
 class NlpAnalysis(BaseModel):
-    mention_type: str
     sentiment: str
     entities: List[str]
+    moderation_results: List[ModerationResult]
 
 class AnalysisResult(BaseModel):
     article: ScrapedArticle
