@@ -12,6 +12,7 @@ class ScrapedArticle(BaseModel):
     scraped_at: datetime
     domain: str
     publish_date: Optional[datetime] = None
+    owner: str
 
 class NlpAnalysis(BaseModel):
     mention_type: str
