@@ -16,7 +16,7 @@ CUSTOM_SEARCH_ENGINE_ID = os.getenv("CUSTOM_SEARCH_ENGINE_ID")
 
 @app.get("/")
 def read_root():
-    return {"message": "api_coletor_google no ar!"}
+    return {"message": "api_nlp no ar!"}
 
 @app.post("/coletar-dados")
 def coletar_dados(db: Client = Depends(get_db)):
