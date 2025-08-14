@@ -1,4 +1,4 @@
-from google.cloud import language_v1
+from google.cloud.language_v1 import LanguageServiceClient, types
 from models.schemas import NlpAnalysis
 import logging
 
@@ -7,9 +7,9 @@ def analyze_text(text: str) -> NlpAnalysis:
     Analyzes the input text using Google Cloud Natural Language API.
     """
     try:
-        client = language_v1.LanguageServiceClient()
-        document = language_v1.types.Document(
-            content=text, type_=language_v1.types.Document.Type.PLAIN_TEXT
+        client = LanguageServiceClient()
+        document = types.Document(
+            content=text, type_=types.Document.Type.PLAIN_TEXT, language="pt"
         )
 
         # Sentiment analysis
@@ -26,11 +26,8 @@ def analyze_text(text: str) -> NlpAnalysis:
         entities_response = client.analyze_entities(document=document)
         entities = [entity.name for entity in entities_response.entities]
 
-        # Content classification
-        classification_response = client.classify_text(document=document)
-        categories = [category.name for category in classification_response.categories]
-        # For now, we'll just join the categories. This might need refinement.
-        mention_type = ", ".join(categories) if categories else "não classificado"
+        # Content classification is not reliably working for Portuguese, so we skip it.
+        mention_type = "não classificado"
 
         return NlpAnalysis(
             mention_type=mention_type,

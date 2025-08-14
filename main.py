@@ -39,9 +39,9 @@ def analyze_articles_by_owner(owner: str):
             article_data = doc.to_dict()
             article_data['id'] = doc.id
             # Convertendo timestamps do Firestore para datetime, se necessário
-            if 'scraped_at' in article_data and not isinstance(article_data['scraped_at'], datetime.datetime):
+            if 'scraped_at' in article_data and hasattr(article_data['scraped_at'], 'to_datetime'):
                 article_data['scraped_at'] = article_data['scraped_at'].to_datetime()
-            if 'publish_date' in article_data and article_data['publish_date'] and not isinstance(article_data['publish_date'], datetime.datetime):
+            if 'publish_date' in article_data and article_data['publish_date'] and hasattr(article_data['publish_date'], 'to_datetime'):
                 article_data['publish_date'] = article_data['publish_date'].to_datetime()
             articles_to_process.append(ScrapedArticle.model_validate(article_data))
 
@@ -65,8 +65,8 @@ def analyze_articles_by_owner(owner: str):
                 results_collection.add(analysis_result.model_dump(by_alias=True, exclude_none=True))
 
                 # 4. Atualiza o status do artigo original para 'processed'
-                article_doc_ref = articles_ref.document(article.id)
-                article_doc_ref.update({"status": "processed"})
+                # article_doc_ref = articles_ref.document(article.id)
+                # article_doc_ref.update({"status": "processed"})
                 
                 processed_count += 1
 
