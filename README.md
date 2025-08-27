@@ -13,10 +13,11 @@ Processar textos utilizando a API Google Cloud Natural Language e retornar anál
 * Moderação de conteúdo: identificação de conteúdo sensível ou impróprio.
 
 ## Instruções Detalhadas:
-* Utilizando o arquivo `database.py`, a aplicação obtém do Firestore os textos a serem analisados. A coleção utilizada é a: "scraped_articles", buscando por documentos com `status` igual a `pending` para um `owner` específico.
-* As análises de NLP são realizadas pelo serviço `google_nlp_service.py`, que utiliza a API da Google.
-* Os resultados são armazenados na coleção "nlp_analysis_results" no Firestore.
-* Logs de erro gerados por exceções são armazenados na coleção "erros_de_execucao_api_nlp".
+* A aplicação expõe um endpoint `/run-nlp-analysis` que é acionado pelo Google Cloud Scheduler.
+* Ao ser acionado, o endpoint inicia uma tarefa em segundo plano que busca por documentos na coleção `monitor_results` do Firestore com `status` igual a `scraper_ok`.
+* As análises de NLP são realizadas pelo serviço `google_nlp_service.py`, que utiliza a API da Google para extrair sentimento, entidades e resultados de moderação.
+* Os resultados são salvos no mesmo documento na coleção `monitor_results`, e o `status` do documento é atualizado para `nlp_ok`.
+* O log de cada execução é armazenado na coleção `system_logs`.
 
 ## Estrutura Detalhada da Aplicação
 
@@ -35,20 +36,6 @@ Esta seção detalha a arquitetura e os componentes principais da `api_nlp`.
 
 A aplicação utiliza os seguintes modelos Pydantic para estruturar os dados:
 
--   **`ScrapedArticle`**: Representa a estrutura de um artigo ou texto extraído para análise.
-    -   `id`: `str` - ID do documento no Firestore.
-    -   `title`: `str` - Título do artigo.
-    -   `url`: `str` - URL de origem do artigo.
-    -   `authors`: `List[str]` - Lista de autores.
-    -   `text`: `str` - Conteúdo textual completo do artigo.
-    -   `scraped_by`: `str` - Ferramenta ou processo que realizou a extração.
-    -   `top_image`: `Optional[str]` - URL da imagem principal do artigo.
-    -   `scraped_at`: `datetime` - Data e hora da extração.
-    -   `domain`: `str` - Domínio do site de origem.
-    -   `publish_date`: `Optional[datetime]` - Data de publicação do artigo.
-    -   `owner`: `str` - Cliente ou entidade responsável pela análise do artigo.
-    -   `status`: `str` - Status do processamento do artigo (ex: 'pending', 'processed').
-
 -   **`ModerationResult`**: Armazena o resultado da análise de moderação de conteúdo.
     -   `category`: `str` - Categoria da moderação (ex: 'Toxic', 'Derogatory').
     -   `confidence`: `float` - Nível de confiança da classificação.
@@ -58,12 +45,10 @@ A aplicação utiliza os seguintes modelos Pydantic para estruturar os dados:
     -   `entities`: `List[str]` - Lista de entidades nomeadas.
     -   `moderation_results`: `List[ModerationResult]` - Lista com os resultados da moderação.
 
--   **`AnalysisResult`**: Modelo que agrega o artigo original e sua respectiva análise, representando o documento final a ser salvo no Firestore.
-    -   `article`: `ScrapedArticle` - O objeto do artigo original.
-    -   `google_nlp_analysis`: `GoogleNlpAnalysis` - O objeto com os resultados da análise do Google.
-    -   `processed_at`: `datetime` - Data e hora em que a análise foi concluída.
-
--   **`ErrorLog`**: Define a estrutura para os logs de erro.
-    -   `error_message`: `str` - A mensagem de erro capturada.
-    -   `timestamp`: `datetime` - Data e hora em que o erro ocorreu.
-    -   `details`: `Optional[str]` - Detalhes adicionais ou stack trace do erro.
+-   **`SystemLog`**: Define a estrutura para os logs de execução.
+    -   `task`: `str` - Nome da tarefa executada.
+    -   `start_time`: `datetime` - Data e hora de início da tarefa.
+    -   `end_time`: `Optional[datetime]` - Data e hora de término da tarefa.
+    -   `status`: `str` - Status da tarefa (ex: 'running', 'completed', 'failed').
+    -   `processed_count`: `int` - Número de itens processados.
+    -   `error_message`: `Optional[str]` - Mensagem de erro, caso ocorra.

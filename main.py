@@ -1,148 +1,95 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, BackgroundTasks, HTTPException
 import traceback
 import datetime
-import pytz
-
 from database import get_db
 from google_nlp_service import analyze_text
-from models.schemas import ScrapedArticle, GoogleNlpAnalysis, AnalysisResult, ErrorLog
+from models.schemas import SystemLog
 
 app = FastAPI(
     title="API NLP",
     description="API para processamento de linguagem natural de artigos.",
-    version="0.1.0"
+    version="0.2.0"
 )
+
+def run_nlp_analysis_task():
+    """
+    Busca artigos com status 'scraper_ok', realiza a análise de NLP,
+    salva os resultados e atualiza o status do artigo.
+    Registra o processo na coleção system_logs.
+    """
+    db = get_db()
+    system_logs_ref = db.collection('system_logs')
+    monitor_results_ref = db.collection('monitor_results')
+    
+    start_time = datetime.datetime.now(datetime.timezone.utc)
+    log_entry = SystemLog(
+        task="Análise NLP",
+        start_time=start_time,
+        status="running"
+    )
+    log_doc = system_logs_ref.add(log_entry.model_dump())[1]
+
+    processed_count = 0
+    try:
+        query = monitor_results_ref.where('status', '==', 'scraper_ok')
+        articles_snapshot = query.stream()
+
+        for doc in articles_snapshot:
+            article_id = doc.id
+            try:
+                article_data = doc.to_dict()
+                
+                text_to_analyze = article_data.get("scraped_content", "") or article_data.get("scraped_title", "")
+
+                if not text_to_analyze:
+                    continue
+
+                google_nlp_analysis = analyze_text(text_to_analyze)
+
+                update_data = {
+                    "google_nlp_analysis": google_nlp_analysis.model_dump(),
+                    "status": "nlp_ok",
+                    "last_processed_at": datetime.datetime.now(datetime.timezone.utc)
+                }
+                monitor_results_ref.document(article_id).update(update_data)
+                
+                processed_count += 1
+            except Exception as e:
+                error_message = f"Erro ao processar o artigo {article_id}: {e}"
+                print(error_message)
+                # Atualiza o status do artigo para 'nlp_error' e registra a mensagem de erro
+                update_data = {
+                    "status": "nlp_error",
+                    "nlp_error_message": str(e),
+                    "last_processed_at": datetime.datetime.now(datetime.timezone.utc)
+                }
+                monitor_results_ref.document(article_id).update(update_data)
+
+        end_time = datetime.datetime.now(datetime.timezone.utc)
+        log_entry.end_time = end_time
+        log_entry.status = "completed"
+        log_entry.processed_count = processed_count
+        log_doc.update(log_entry.model_dump())
+
+    except Exception as e:
+        end_time = datetime.datetime.now(datetime.timezone.utc)
+        error_message = f"Erro geral na tarefa de análise NLP: {e}"
+        log_entry.end_time = end_time
+        log_entry.status = "failed"
+        log_entry.error_message = error_message
+        log_entry.processed_count = processed_count
+        log_doc.update(log_entry.model_dump())
+        print(error_message)
+        traceback.print_exc()
+
+@app.post("/run-nlp-analysis", status_code=202)
+async def run_nlp_analysis(background_tasks: BackgroundTasks):
+    """
+    Aciona a tarefa de análise de NLP em segundo plano.
+    """
+    background_tasks.add_task(run_nlp_analysis_task)
+    return {"message": "A tarefa de análise de NLP foi iniciada em segundo plano."}
 
 @app.get("/")
 def read_root():
     return {"message": "Bem-vindo à API NLP!"}
-
-@app.post("/analyze/{owner}", response_model=dict)
-def analyze_articles_by_owner(owner: str):
-    """
-    Busca artigos pendentes de um 'owner' específico, realiza a análise de NLP,
-    salva os resultados e atualiza o status do artigo.
-    """
-    db = get_db()
-    articles_ref = db.collection('scraped_articles')
-    results_collection = db.collection('nlp_analysis_results')
-    
-    processed_count = 0
-    errors = []
-
-    sao_paulo_tz = pytz.timezone("America/Sao_Paulo")
-    hora_inicio_utc = datetime.datetime.now(datetime.timezone.utc)
-    hora_inicio_br_str = hora_inicio_utc.astimezone(sao_paulo_tz).strftime('%d/%m/%Y %H:%M:%S %Z')
-
-    try:
-        # Busca por artigos com status 'pending' para o owner especificado
-        query = articles_ref.where('owner', '==', owner).where('status', '==', 'pending')
-        articles_snapshot = query.stream()
-        print(f"Iniciando análise NLP para o owner: '{owner}'. Data e Hora de início: {hora_inicio_br_str}")
-
-        articles_to_process = []
-        for doc in articles_snapshot:
-            article_data = doc.to_dict()
-            article_data['id'] = doc.id
-            # Convertendo timestamps do Firestore para datetime, se necessário
-            if 'scraped_at' in article_data and hasattr(article_data['scraped_at'], 'to_datetime'):
-                article_data['scraped_at'] = article_data['scraped_at'].to_datetime()
-            if 'publish_date' in article_data and article_data['publish_date'] and hasattr(article_data['publish_date'], 'to_datetime'):
-                article_data['publish_date'] = article_data['publish_date'].to_datetime()
-            articles_to_process.append(ScrapedArticle.model_validate(article_data))
-
-        if not articles_to_process:
-            print(f"Nenhum artigo pendente encontrado para o owner '{owner}'.")
-            return {"message": f"Nenhum artigo pendente encontrado para o owner '{owner}'."}
-
-        for article in articles_to_process:
-            try:
-                # 1. Realiza a Análise NLP
-                google_nlp_analysis = analyze_text(article.text)
-
-                # 2. Cria o resultado da análise
-                analysis_result = AnalysisResult(
-                    article=article,
-                    google_nlp_analysis=google_nlp_analysis,
-                    processed_at=datetime.datetime.now(datetime.timezone.utc)
-                )
-
-                # 3. Salva o resultado em 'nlp_analysis_results'
-                # Usamos .model_dump() para converter o objeto Pydantic em um dicionário
-                results_collection.add(analysis_result.model_dump(by_alias=True, exclude_none=True))
-
-                # 4. Atualiza o status do artigo original para 'processed'
-                article_doc_ref = articles_ref.document(article.id)
-                article_doc_ref.update({"status": "processed"})
-                
-                print(f"Análise NLP do artigo '{article.id}' concluída com sucesso.")
-                processed_count += 1
-
-            except Exception as e:
-                error_detail = traceback.format_exc()
-                errors.append(f"Erro ao processar artigo {article.id}: {e}")
-                print(f"Erro ao processar artigo {article.id}: {e}")
-                
-                # Log de erro individual no Firestore
-                error_log = ErrorLog(
-                    error_message=f"Falha no processamento do artigo ID: {article.id} - {e}",
-                    details=error_detail
-                )
-                db.collection('erros_de_execucao_api_nlp').add(error_log.model_dump())
-
-        response = {
-            "message": f"Processamento concluído para o owner '{owner}'.",
-            "processed_count": processed_count,
-        }
-        if errors:
-            response["errors"] = errors
-        
-        hora_fim_utc = datetime.datetime.now(datetime.timezone.utc)
-        tempo_total = hora_fim_utc - hora_inicio_utc
-        hora_fim_br_str = hora_fim_utc.astimezone(sao_paulo_tz).strftime('%d/%m/%Y %H:%M:%S %Z')
-
-        print(f"Processamento concluído para o owner '{owner}'. Total de artigos processados: {processed_count}. Hora de fim: {hora_fim_br_str}, Tempo total: {tempo_total}.")
-
-        return response
-
-    except Exception as e:
-        # Log de erro geral no Firestore
-        error_log = ErrorLog(
-            error_message=str(e),
-            details=traceback.format_exc()
-        )
-        db.collection('erros_de_execucao_api_nlp').add(error_log.model_dump())
-        
-        raise HTTPException(status_code=500, detail=f"Ocorreu um erro geral ao processar os artigos: {e}")
-
-# Rota temporária para desenvolvimento/testes
-@app.post("/reset-status/{owner}", response_model=dict)
-def reset_status_to_pending(owner: str):
-    """
-    Reseta o status de todos os artigos de um 'owner' para 'pending'.
-    Rota para fins de desenvolvimento e teste.
-    """
-    db = get_db()
-    articles_ref = db.collection('scraped_articles')
-    updated_count = 0
-    
-    try:
-        query = articles_ref.where('owner', '==', owner)
-        articles_snapshot = query.stream()
-
-        for doc in articles_snapshot:
-            doc.reference.update({"status": "pending"})
-            updated_count += 1
-        
-        return {
-            "message": f"Operação concluída para o owner '{owner}'.",
-            "updated_count": updated_count
-        }
-
-    except Exception as e:
-        error_log = ErrorLog(
-            error_message=f"Erro ao resetar status para o owner {owner}: {e}",
-            details=traceback.format_exc()
-        )
-        db.collection('erros_de_execucao_api_nlp').add(error_log.model_dump())
-        raise HTTPException(status_code=500, detail=f"Ocorreu um erro ao resetar o status dos artigos: {e}")

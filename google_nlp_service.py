@@ -4,7 +4,7 @@ import logging
 
 def analyze_text(text: str) -> GoogleNlpAnalysis:
     """
-    Analisa o texto de entrada usando a API Google Cloud Natural Language.
+    Analisa o texto de entrada usando a API Google Cloud Natural Language. Levanta uma exceção em caso de erro.
     """
     try:
         client = LanguageServiceClient()
@@ -46,8 +46,5 @@ def analyze_text(text: str) -> GoogleNlpAnalysis:
         logging.error(f"Erro durante a análise de NLP: {e}")
         # Log do erro detalhado
         logging.exception("Detalhes da exceção:")
-        return GoogleNlpAnalysis(
-            sentiment="erro na análise",
-            entities=[],
-            moderation_results=[],
-        )
+        # Re-lança a exceção para que o chamador possa tratá-la.
+        raise
