@@ -1,7 +1,7 @@
 fastapi
 uvicorn[standard]
-google-cloud-aiplatform
-firebase-admin
+google-cloud-aiplatform==1.55.0
+firebase-admin==6.6.0
 python-dotenv
 pydantic
-google-cloud-language
+google-cloud-language==2.15.0
