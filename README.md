@@ -1,54 +1,86 @@
-# api_nlp
+# Documentação do Módulo NLP (Natural Language Processing)
 
-* Nome da aplicação: api_nlp
-* Linguagem: Python+ FastAPI 
-* Ambiente de desenvolvimento: Windows
-* Ambiente de produção: Google Cloud Run
+Este documento detalha a arquitetura e o funcionamento do micro-serviço de Análise de Linguagem Natural.
 
-## Objetivo da aplicação:  
-Processar textos utilizando a API Google Cloud Natural Language e retornar análises automatizadas como:
+## 1. Detalhes Técnicos
 
-* Classificação de sentimento : positivo, neutro, negativo.
-* Detecção de Entidades: pessoas, marcas, locais.
-* Moderação de conteúdo: identificação de conteúdo sensível ou impróprio.
+Este serviço é uma API FastAPI que enriquece os dados textuais coletados com análises semânticas.
 
-## Instruções Detalhadas:
-* A aplicação expõe um endpoint `/run-nlp-analysis` que é acionado pelo Google Cloud Scheduler.
-* Ao ser acionado, o endpoint inicia uma tarefa em segundo plano que busca por documentos na coleção `monitor_results` do Firestore com `status` igual a `scraper_ok`.
-* As análises de NLP são realizadas pelo serviço `google_nlp_service.py`, que utiliza a API da Google para extrair sentimento, entidades e resultados de moderação.
-* Os resultados são salvos no mesmo documento na coleção `monitor_results`, e o `status` do documento é atualizado para `nlp_ok`.
-* O log de cada execução é armazenado na coleção `system_logs`.
+- **Framework Principal:** [FastAPI](https://fastapi.tiangolo.com/).
+- **Provedor de NLP:** [Google Cloud Natural Language API](https://cloud.google.com/natural-language). O serviço `google_nlp_service.py` encapsula as chamadas a esta API para realizar:
+    - Análise de Sentimento.
+    - Extração de Entidades.
+    - Moderação de Conteúdo.
+- **Banco de Dados:** Utiliza o SDK `firebase-admin` para interagir com o **Google Firestore**.
+- **Execução Assíncrona:** Assim como o scraper, o processo de análise de NLP é executado como uma tarefa em background (`BackgroundTasks`) para garantir que a API responda imediatamente.
 
-## Estrutura Detalhada da Aplicação
+## 2. Instruções de Uso e Implantação
 
-Esta seção detalha a arquitetura e os componentes principais da `api_nlp`.
+### 2.1. Configuração do Ambiente Local
 
-### Arquivos Principais
+1.  **Credenciais de Serviço do Firebase:**
+    -   Coloque o arquivo JSON da sua Service Account do Firebase dentro da pasta `config/`.
 
--   `main.py`: Ponto de entrada da aplicação FastAPI. É responsável por inicializar a API e definir o endpoint que orquestra o processo de análise de NLP.
--   `google_nlp_service.py`: Módulo que encapsula a lógica de interação com a API Google Cloud Natural Language, realizando a análise de sentimento, extração de entidades e moderação de conteúdo.
--   `database.py`: Contém a lógica para estabelecer e gerenciar a conexão com o banco de dados Firestore.
--   `models/schemas.py`: Arquivo central que define os esquemas de dados da aplicação utilizando Pydantic.
--   `Dockerfile`: Define as instruções para a construção da imagem Docker da aplicação.
--   `requirements.txt`: Lista todas as bibliotecas Python necessárias para o projeto.
+2.  **Variáveis de Ambiente:**
+    -   Copie `.env.example` para `.env` (se aplicável) e garanta que a variável `GOOGLE_APPLICATION_CREDENTIALS` aponte para o seu arquivo de credenciais, seja via `.env` ou configuração do sistema.
 
-### Modelos de Dados (`models/schemas.py`)
+3.  **Instalação e Execução:**
+    ```bash
+    # Navegue até a pasta da API
+    cd api_nlp
 
-A aplicação utiliza os seguintes modelos Pydantic para estruturar os dados:
+    # Crie e ative um ambiente virtual
+    python -m venv venv
+    .\venv\Scripts\activate
 
--   **`ModerationResult`**: Armazena o resultado da análise de moderação de conteúdo.
-    -   `category`: `str` - Categoria da moderação (ex: 'Toxic', 'Derogatory').
-    -   `confidence`: `float` - Nível de confiança da classificação.
+    # Instale as dependências
+    pip install -r requirements.txt
 
--   **`GoogleNlpAnalysis`**: Armazena os resultados gerados pelo processamento de NLP do Google.
-    -   `sentiment`: `str` - Sentimento geral do texto (positivo, negativo, neutro).
-    -   `entities`: `List[str]` - Lista de entidades nomeadas.
-    -   `moderation_results`: `List[ModerationResult]` - Lista com os resultados da moderação.
+    # Execute o servidor
+    uvicorn main:app --reload
+    ```
+    A API estará disponível em `http://127.0.0.1:8000`.
 
--   **`SystemLog`**: Define a estrutura para os logs de execução.
-    -   `task`: `str` - Nome da tarefa executada.
-    -   `start_time`: `datetime` - Data e hora de início da tarefa.
-    -   `end_time`: `Optional[datetime]` - Data e hora de término da tarefa.
-    -   `status`: `str` - Status da tarefa (ex: 'running', 'completed', 'failed').
-    -   `processed_count`: `int` - Número de itens processados.
-    -   `error_message`: `Optional[str]` - Mensagem de erro, caso ocorra.
+### 2.2. Implantação (Google Cloud Run)
+
+O serviço é projetado para ser implantado como um contêiner no Google Cloud Run.
+
+```bash
+# Substitua [PROJECT_ID]
+gcloud builds submit --tag gcr.io/[PROJECT_ID]/api-nlp ./api_nlp
+
+gcloud run deploy api-nlp \
+  --image gcr.io/[PROJECT_ID]/api-nlp \
+  --platform managed \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --port 8000
+```
+**Nota de Produção:** A invocação em produção deve ser feita de forma segura pelo Google Cloud Scheduler, utilizando uma conta de serviço com as permissões necessárias.
+
+## 3. Relação com Outros Módulos
+
+Este serviço é o segundo "worker" na pipeline de processamento de dados, atuando sobre os resultados do módulo de scraping.
+
+### 3.1. Orquestração (Google Cloud Scheduler)
+
+-   O endpoint `/run-nlp-analysis` é projetado para ser acionado periodicamente por um **Google Cloud Scheduler**, idealmente após a execução do scraper.
+
+### 3.2. Interação com o Firestore
+
+O Firestore serve como a ponte entre os módulos.
+
+-   **`monitor_results` (Leitura e Escrita):**
+    -   **Fonte de Dados:** O serviço busca documentos nesta coleção onde o campo `status` é igual a `scraper_ok`.
+    -   **Lógica de Processamento:** Para cada documento, ele pega o conteúdo de `scraped_content` e o envia para a Google NLP API.
+    -   **Atualização de Status:**
+        -   Em caso de sucesso, cria um novo campo no documento chamado `google_nlp_analysis` (contendo os resultados de sentimento, entidades e moderação) e atualiza o `status` para `nlp_ok`.
+        -   Em caso de falha, atualiza o `status` para `nlp_error` e registra a mensagem de erro no campo `nlp_error_message`.
+
+-   **`system_logs` (Apenas Escrita):**
+    -   Assim como o scraper, ele cria um log de execução no início da tarefa (`status: 'running'`) e o atualiza no final (`status: 'completed'` ou `'failed'`), registrando a quantidade de textos processados.
+
+### 3.3. Módulos Adjacentes
+
+-   **Módulo Scraper (Fonte):** Este serviço é o consumidor direto dos resultados do `scraper_newspaper3k`. Ele só processa os dados que o scraper marcou como `scraper_ok`.
+-   **Módulo Analytics (Destino):** Os dados estruturados gerados aqui (sentimento, entidades, etc.) são a base para o módulo de **Analytics**. O frontend e os dashboards consumirão esses dados pré-processados para exibir insights, tendências e alertas.
