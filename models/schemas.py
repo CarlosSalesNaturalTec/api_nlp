@@ -42,3 +42,7 @@ class SystemLog(BaseModel):
     status: str
     processed_count: int = 0
     error_message: Optional[str] = None
+
+class WhatsAppMessagePayload(BaseModel):
+    group_id: str
+    message_id: str
